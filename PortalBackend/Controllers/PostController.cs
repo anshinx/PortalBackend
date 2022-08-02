@@ -7,5 +7,11 @@ namespace PortalBackend.Controllers
     [ApiController]
     public class PostController : ControllerBase
     {
+        [HttpPost("/communitypost")]
+        public ActionResult SharePost(PortalBackend.Objects.CommunityPost.PostDTO post)
+        {
+
+            return Ok("OK");
+        }
     }
 }

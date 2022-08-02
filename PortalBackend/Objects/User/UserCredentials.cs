@@ -13,7 +13,7 @@ namespace PortalBackend.Objects.User
         public string UserName { get; set; } = string.Empty;
 
         [Required]
-        public string PasswordHash { get; set; }
+        public string Password { get; set; }
 
         [Required]
         [MaxLength(75)]
@@ -29,6 +29,9 @@ namespace PortalBackend.Objects.User
         [Required]
         public string Last_Name { get; set; } = string.Empty;
 
+        public int StudentId { get; set; }
+
+        public string Department { get; set; } = string.Empty;
 
 
     }

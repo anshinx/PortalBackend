@@ -1,5 +1,4 @@
 ﻿using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
 using PortalBackend.Data;
@@ -24,9 +23,10 @@ namespace PortalBackend.Controllers
         }
 
         [HttpPost("/register")]
-        public ActionResult Register(UserCredentials getuser)
+        public ActionResult<object> Register(UserCredentials getuser)
         {
-            CreatePasswordHash(getuser.PasswordHash, out byte[] passwordHash, out byte[] passwordsalt);
+            CreatePasswordHash(getuser.Password, out byte[] passwordHash, out byte[] passwordsalt);
+            RefreshToken refresh = GenerateRefreshToken();
             var user = new UserDTO();
             user.UserName = getuser.UserName;
             user.First_Name = getuser.First_Name;
@@ -34,14 +34,22 @@ namespace PortalBackend.Controllers
             user.Email = getuser.Email;
             user.PasswordHash = passwordHash;
             user.PasswordSalt = passwordsalt;
+            user.Department = getuser.Department;
+            user.StudentId = getuser.StudentId;
+            user.RefreshToken = GenerateRefreshToken().Token;
 
             this.context.Users.Add(user);
 
             this.context.SaveChanges();
 
-            user.PasswordSalt = System.Text.Encoding.UTF8.GetBytes("");
-            user.PasswordHash = System.Text.Encoding.UTF8.GetBytes("");
-            return Ok(user);
+            var _User = this.context.Users.Where(a => a.UserName == user.UserName).ToList();
+
+
+            Dictionary<string, string> token = new Dictionary<string, string>();
+            token.Add("token", CreateToken(user));
+            token.Add("refresh_token", CreateRefreshToken(user));
+
+            return Ok(token);
         }
 
         [HttpPost("/login")]
@@ -53,8 +61,12 @@ namespace PortalBackend.Controllers
 
                 if (VerifyPasswordHash(credentials.Password, User[0].PasswordHash, User[0].PasswordSalt))
                 {
+                    Dictionary<string, string> token = new Dictionary<string, string>();
 
-                    return Ok(CreateToken(User[0]));
+                    token.Add("token", CreateToken(User[0]));
+                    token.Add("refresh_token", CreateRefreshToken(User[0]));
+
+                    return Ok(token);
                 }
                 return BadRequest("Wrong Password");
             }
@@ -68,24 +80,69 @@ namespace PortalBackend.Controllers
 
 
         [HttpPost("/verifyToken")]
-        
+
         public ActionResult SendClaims(string token)
         {
+
             return Ok(VerifyToken(token));
+
         }
 
+        [HttpPost("/get-new-token")]
+        public ActionResult GetNewToken(string token)
+        {
+            var handler = new JwtSecurityTokenHandler();
+            try
+            {
+                var jwtSecurityToken = handler.ReadJwtToken(token).Payload.Values;
+                var tokenContentItems = new List<string>();
+                foreach (var item in jwtSecurityToken)
+                {
+                    tokenContentItems.Add(item.ToString());
 
+                }
+
+                var _user = this.context.Users.Where(a => a.RefreshToken == tokenContentItems[1]).ToList()[0];
+                if (_user.RefreshToken != tokenContentItems[1]) return Unauthorized("err : tokenmatcherror");
+
+                Dictionary<string, string> tokens = new Dictionary<string, string>();
+
+                RefreshToken newRefresh = new RefreshToken();
+                _user.RefreshToken = newRefresh.Token;
+                _user.RefreshTokenExpires = newRefresh.ExpiresIn;
+
+                this.context.SaveChanges();
+                tokens.Add("token", CreateToken(_user));
+                tokens.Add("refresh_token", CreateRefreshToken(_user));
+
+                return Ok(tokens);
+            }
+            catch
+            {
+                return BadRequest("TokenErr");
+            }
+
+        }
+
+        [HttpDelete("/test-delete"), Authorize(Roles = "Neexiyar")]
+        public ActionResult Delete()
+        {
+            this.context.Users.RemoveRange(this.context.Users);
+            this.context.SaveChanges();
+            return Ok(this.context.Users);
+        }
         private string CreateToken(UserDTO user)
         {
             List<Claim> claims = new List<Claim>
             {
-
+                new Claim(ClaimTypes.Role , user.UserName),
                 new Claim("displayName", user.First_Name + " " + user.Last_Name),
                 new Claim("first_name", user.First_Name),
                 new Claim("last_name" , user.Last_Name),
                 new Claim("username" , user.UserName),
                 new Claim("email" , user.Email),
-                new Claim("ProfilePicture" , user.ProfilePicture)
+                new Claim("ProfilePicture" , user.ProfilePicture
+                )
 
 
             };
@@ -102,28 +159,56 @@ namespace PortalBackend.Controllers
             return returnToken;
         }
 
+        private string CreateRefreshToken(UserDTO user)
+        {
+            List<Claim> claims = new List<Claim>
+            {
 
-        private JwtPayload VerifyToken(string token)
+                new Claim("username" , user.UserName),
+                new Claim("TokenRefresh" , user.RefreshToken)
+
+            };
+            var key = new SymmetricSecurityKey(System.Text.Encoding.UTF8.GetBytes(
+                this.configuration.GetSection("AppSettings:Token").Value));
+
+            var cred = new SigningCredentials(key, SecurityAlgorithms.HmacSha512Signature);
+            var token = new JwtSecurityToken(
+                    claims: claims,
+                    expires: DateTime.Now.AddDays(15),
+                    signingCredentials: cred
+                );
+            var returnToken = new JwtSecurityTokenHandler().WriteToken(token);
+            return returnToken;
+        }
+
+        private ActionResult VerifyToken(string token)
         {
             var handler = new JwtSecurityTokenHandler();
-            var jwtSecurityToken = handler.ReadJwtToken(token);
+            try
+            {
+                var jwtSecurityToken = handler.ReadJwtToken(token);
+                return Ok(jwtSecurityToken.Payload);
+            }
+            catch
+            {
+                return BadRequest("TokenErr");
+            }
 
 
-            return jwtSecurityToken.Payload;
 
         }
-        
-                private RefreshToken GenerateRefreshToken()
-                {
-                    var refreshToken = new RefreshToken
-                    {
-                        Token = Convert.ToBase64String(RandomNumberGenerator.GetBytes(64)),
-                        ExpiresIn = DateTime.Now.AddDays(7),
-                        GeneratedIn = DateTime.Now
-                    };
 
-                    return refreshToken;
-                }
+        private RefreshToken GenerateRefreshToken()
+        {
+            var refreshToken = new RefreshToken
+            {
+                Token = Convert.ToBase64String(RandomNumberGenerator.GetBytes(64)),
+                ExpiresIn = DateTime.Now.AddDays(2),
+                GeneratedIn = DateTime.Now
+            };
+
+            return refreshToken;
+        }
 
         protected void CreatePasswordHash(string password, out byte[] passwordHash, out byte[] passwordsalt)
         {
@@ -145,4 +230,3 @@ namespace PortalBackend.Controllers
         }
     }
 }
-

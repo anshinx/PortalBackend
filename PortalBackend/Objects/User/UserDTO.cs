@@ -22,6 +22,10 @@ namespace PortalBackend.Objects.User
 
         public string ProfilePicture { get; set; } = string.Empty;
 
+        public int StudentId { get; set; }
+
+        public string Department { get; set; } = string.Empty;
+
         [MaxLength(75)]
         [Required]
         public string First_Name { get; set; } = string.Empty;
@@ -33,6 +37,9 @@ namespace PortalBackend.Objects.User
         public DateTime DateCreated { get; set; } = DateTime.Now;
 
         public List<Communities> Communities { get; set; } = new List<Communities>();
+
+        public string RefreshToken { get; set; }
+        public DateTime RefreshTokenExpires { get; set; }
 
 
 

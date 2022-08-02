@@ -1,5 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using PortalBackend.Objects.User;
+using PortalBackend.Objects.CommunityPost;
 
 namespace PortalBackend.Data
 {
@@ -13,6 +14,7 @@ namespace PortalBackend.Data
 
         public DbSet<Subscriptions> Subscriments { get; set; }
 
+        public DbSet<PostDTO> CommunityPost { get; set; }
 
     }
 
